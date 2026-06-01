@@ -1,0 +1,5 @@
+# Local runtime recommendation for contributors using mise.
+# The package itself supports Python >=3.10, while local development defaults
+# to 3.11 to avoid machine drift across contributors.
+[tools]
+python = "3.11"

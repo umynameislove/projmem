@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        os: [ubuntu-22.04, macos-14]
+
+    steps:
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="$GITHUB_SHA"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ref="refs/pull/${{ github.event.pull_request.number }}/merge"
+          fi
+          git init "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          for attempt in 1 2 3; do
+            if git fetch --no-tags --depth=1 origin "$ref"; then
+              git checkout --force FETCH_HEAD
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Install dependencies
+        # Install the package, not an editable .pth shim, so macOS/Linux CI both
+        # exercise the packaged CLI entry point that users will run.
+        run: uv sync --all-groups --no-editable
+
+      - name: CLI smoke
+        run: |
+          uv run pmem --help
+          uv run pmem import --help
+          uv run pmem export-bundle --help
+          uv run pmem conflict-check --help
+          uv run pmem resolve --help
+          uv run pmem share --help
+
+      - name: Lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check
+        run: uv run pyright
+
+      - name: Secret baseline check
+        run: uv run pre-commit run detect-secrets --all-files
+
+      - name: Test
+        shell: bash
+        run: |
+          set +e
+          uv run pytest --cov=pmem --cov-report=term-missing 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python - <<'PY'
+          from pathlib import Path
+
+          tail = "\n".join(Path("pytest.log").read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
+          escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=pytest failure::{escaped}")
+          PY
+          fi
+          exit "$status"
+
+      - name: Build package
+        run: uv build

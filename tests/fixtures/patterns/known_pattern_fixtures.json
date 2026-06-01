@@ -1,0 +1,77 @@
+{
+  "schema_version": "pattern-fixture-manifest-v1",
+  "purpose": "Synthetic fixture inventory for pattern-report gates",
+  "claim_boundary": "screening_candidates_for_human_review_not_causal",
+  "seed_policy": "static_manifest_no_runtime_randomness",
+  "privacy_policy": {
+    "raw_failure_text": false,
+    "raw_config_values": false,
+    "raw_artifact_paths": false,
+    "network": false
+  },
+  "fixtures": [
+    {
+      "fixture_id": "config_failure_ground_truth",
+      "detector": "config_failure",
+      "test_file": "tests/integration/test_config_failure_correlation.py",
+      "known_signal": "optimizer=adam associated with confirmed failures",
+      "expected_output": {
+        "candidate_min": 1,
+        "required_claim": "correlation_observed_not_causal"
+      }
+    },
+    {
+      "fixture_id": "dataset_failure_ground_truth",
+      "detector": "dataset_failure",
+      "test_file": "tests/integration/test_dataset_failure_correlation.py",
+      "known_signal": "explicit dataset version with higher failure and metric anomaly score",
+      "expected_output": {
+        "candidate_min": 1,
+        "dataset_identity_policy": "explicit_artifact_dataset_id_only"
+      }
+    },
+    {
+      "fixture_id": "recurring_failure_ground_truth",
+      "detector": "recurring_failures",
+      "test_file": "tests/integration/test_recurring_failures_integration.py",
+      "known_signal": "five same-tag failures grouped as recurring candidates",
+      "expected_output": {
+        "recurring_cluster_min": 1,
+        "required_claim": "recurring_failure_candidate_not_root_cause"
+      }
+    },
+    {
+      "fixture_id": "temporal_drift_ground_truth",
+      "detector": "temporal",
+      "test_file": "tests/integration/test_temporal_analysis.py",
+      "known_signal": "primary metric drift plus midpoint decision-adjacent metric shift",
+      "expected_output": {
+        "drift_required": true,
+        "decision_candidate_min": 1,
+        "required_claim": "decision_metric_shift_candidate_not_causal"
+      }
+    },
+    {
+      "fixture_id": "anomaly_ground_truth",
+      "detector": "anomaly",
+      "test_file": "tests/integration/test_anomaly_detection.py",
+      "known_signal": "IQR high outlier and same-config high metric variance",
+      "expected_output": {
+        "metric_outlier_min": 1,
+        "reproducibility_candidate_min": 1,
+        "required_claim": "potential_reproducibility_issue_not_causal"
+      }
+    },
+    {
+      "fixture_id": "pattern_cli_ground_truth",
+      "detector": "patterns_cli",
+      "test_file": "tests/integration/test_patterns_cli.py",
+      "known_signal": "CLI surfaces pattern reports without raw text",
+      "expected_output": {
+        "command_group": "pmem patterns",
+        "json_output": true,
+        "candidate_min": 4
+      }
+    }
+  ]
+}

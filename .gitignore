@@ -1,0 +1,32 @@
+.DS_Store
+*.swp
+*.swo
+~$*.docx
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+# Local audit/report artifacts. Keep technical docs in Markdown.
+*.docx
+*.pdf
+*.xls
+*.xlsx
+# Planning, ADR, spec, audit, and tracking materials live outside the public
+# package repo.
+docs/*
+!docs/demo.gif
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+.pmem/
+_checks/*/.venv/
