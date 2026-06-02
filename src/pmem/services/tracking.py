@@ -1,6 +1,6 @@
 """`pmem track` service workflow.
 
-file tracking tracks regular files only. Directory tracking is intentionally rejected until
+The track service captures regular files only. Directory tracking is intentionally rejected until
 recursive policy, performance limits, and snapshot semantics are specified.
 """
 
@@ -102,7 +102,7 @@ def track_path(
 
 
 def validate_track_path(project_root: str | Path, user_path: str | Path) -> ValidatedTrackPath:
-    """Validate and normalize a file tracking tracked file path."""
+    """Validate and normalize a tracked file path."""
 
     raw_text = str(user_path)
     if not raw_text.strip():
@@ -188,6 +188,6 @@ def _result_from_record(
 
 
 def _utc_now_iso() -> str:
-    """Return compact UTC ISO timestamp for file tracking tracking records."""
+    """Return a compact UTC ISO timestamp for tracking records."""
 
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

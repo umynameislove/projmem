@@ -1,4 +1,4 @@
-"""lineage evidence lineage tracking over direct graph edges."""
+"""Run lineage evidence over direct graph edges."""
 
 from __future__ import annotations
 

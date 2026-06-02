@@ -1,6 +1,6 @@
 """Project-local config file helpers.
 
-file tracking uses a tiny YAML-compatible file at `.pmem/config.yaml` to keep the stable
+pmem uses a tiny YAML-compatible file at `.pmem/config.yaml` to keep the stable
 project id outside the database. The parser is deliberately narrow so local-memory
 does not need a YAML dependency for four scalar fields.
 """
@@ -35,7 +35,7 @@ def project_config_path(project_root: str | Path) -> Path:
 
 
 def read_project_config(config_path: str | Path) -> ProjectConfig:
-    """Read the narrow file tracking config format."""
+    """Read the narrow project config format."""
 
     raw_values: dict[str, object] = {}
     try:
