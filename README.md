@@ -1,6 +1,8 @@
 # projmem
 
 [![CI](https://github.com/umynameislove/projmem/actions/workflows/ci.yml/badge.svg)](https://github.com/umynameislove/projmem/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/projmem)](https://pypi.org/project/projmem/)
+[![Downloads](https://img.shields.io/pypi/dm/projmem)](https://pypi.org/project/projmem/)
 [![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)](https://github.com/umynameislove/projmem)
 [![Coverage](https://img.shields.io/badge/coverage-95%25%2B-brightgreen)](https://github.com/umynameislove/projmem)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

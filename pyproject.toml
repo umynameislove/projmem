@@ -44,8 +44,10 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/umynameislove/projmem"
 Repository = "https://github.com/umynameislove/projmem"
 Issues = "https://github.com/umynameislove/projmem/issues"
+Changelog = "https://github.com/umynameislove/projmem/blob/main/CHANGELOG.md"
 
 [project.scripts]
 # User-facing CLI command. This deliberately differs from the distribution
