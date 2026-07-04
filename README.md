@@ -109,7 +109,7 @@ Dependency direction is strictly one-way: `cli → services → domain / reposit
 
 - **700+ tests** — unit + integration + security, 95%+ coverage enforced at CI
 - **Matrix CI** — Python 3.10 / 3.11 / 3.12 × Ubuntu / macOS
-- **Static analysis** — `ruff` + `pyright` (strict), `detect-secrets` pre-commit
+- **Static analysis** — `ruff` (lint + format) + `pyright` type-checking + `detect-secrets` pre-commit
 - **Security hardening** — path-traversal guard, secret redaction, no remote URL stored
 
 ## Security & privacy
