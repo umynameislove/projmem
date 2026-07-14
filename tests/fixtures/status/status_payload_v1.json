@@ -1,0 +1,60 @@
+{
+  "schema_version": "status-v1",
+  "project": {
+    "project_id": "proj_9f2c1a7b4d6e40f2a1b3c5d7e9f00112",
+    "project_name": "AG News baseline",
+    "objective": "Train an AG News text-classification baseline"
+  },
+  "metric": {
+    "primary_metric": "accuracy",
+    "direction": "max",
+    "target_value": 0.9,
+    "best_value": 0.87,
+    "target_status": "not_met"
+  },
+  "counts": {
+    "run_count": 12,
+    "successful_run_count": 8,
+    "failed_run_count": 3,
+    "tracked_path_count": 2,
+    "failure_count": 5,
+    "decision_count": 1,
+    "note_count": 4
+  },
+  "best_run": {
+    "run_id": "run_3c8f0a12b4d6e4f0a2b1c3d5e7f90024",
+    "metric_value": 0.87
+  },
+  "baseline": {
+    "run_id": "run_a1b2c3d4e5f60718293a4b5c6d7e8f90"
+  },
+  "graph": {
+    "state": "stale",
+    "node_count": 40,
+    "edge_count": 63,
+    "reason_code": "graph_source_changed"
+  },
+  "recommendations": {
+    "mode": "generated_on_demand",
+    "candidate_count": 3,
+    "active_count": null
+  },
+  "warnings": [
+    {
+      "code": "graph_stale",
+      "severity": "warning",
+      "message": "Evidence graph is stale; rebuild before relying on lineage.",
+      "source": "graph",
+      "remediation": "pmem graph build"
+    }
+  ],
+  "next_action": {
+    "action_id": "rebuild_graph",
+    "reason": "New runs were captured after the last graph build.",
+    "suggested_command": "pmem graph build",
+    "related_entity_id": null
+  },
+  "database_mutation": false,
+  "network": false,
+  "raw_text_in_output": false
+}
