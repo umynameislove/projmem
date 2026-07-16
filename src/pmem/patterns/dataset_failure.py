@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from pmem.errors import PmemValidationError
-from pmem.repositories.sqlite import connect_database, project_database_path
-from pmem.services.project_context import require_project_context
+from pmem.repositories.sqlite import connect_database_readonly, execute, project_database_path
+from pmem.services.project_context import require_project_context_readonly
 from pmem.utils.hashing import compute_text_hash
 
 DATASET_FAILURE_CORRELATION_SCHEMA_VERSION = "dataset-failure-correlation-v1"
@@ -86,7 +86,7 @@ def dataset_failure_correlation_payload(
         min_dataset_runs=min_dataset_runs,
         max_results=max_results,
     )
-    context = require_project_context(project_root)
+    context = require_project_context_readonly(project_root)
     outcomes, skipped_counts = _load_project_outcomes(context.root, context.project.id)
     return dataset_failure_correlation_from_outcomes(
         outcomes,
@@ -226,9 +226,10 @@ def _load_project_outcomes(
     project_root: Path, project_id: str
 ) -> tuple[tuple[DatasetRunOutcome, ...], dict[str, int]]:
     db_path = project_database_path(project_root)
-    connection = connect_database(db_path)
+    connection = connect_database_readonly(db_path)
     try:
-        run_rows = connection.execute(
+        run_rows = execute(
+            connection,
             """
             SELECT runs.run_id, runs.metrics_json, runs.artifacts_json
             FROM runs
@@ -238,7 +239,8 @@ def _load_project_outcomes(
             """,
             (project_id,),
         ).fetchall()
-        failure_rows = connection.execute(
+        failure_rows = execute(
+            connection,
             """
             SELECT failures.id, failures.run_id
             FROM failures

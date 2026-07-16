@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from pmem.errors import PmemValidationError
-from pmem.repositories.sqlite import connect_database, project_database_path
-from pmem.services.project_context import require_project_context
+from pmem.repositories.sqlite import connect_database_readonly, execute, project_database_path
+from pmem.services.project_context import require_project_context_readonly
 from pmem.utils.hashing import compute_text_hash
 
 CONFIG_FAILURE_CORRELATION_SCHEMA_VERSION = "config-failure-correlation-v1"
@@ -82,7 +82,7 @@ def config_failure_correlation_payload(
     if max_results < 1:
         raise PmemValidationError("Config-failure correlation requires max_results >= 1.")
 
-    context = require_project_context(project_root)
+    context = require_project_context_readonly(project_root)
     outcomes = _load_project_outcomes(context.root, context.project.id)
     return config_failure_correlation_from_outcomes(
         outcomes,
@@ -214,9 +214,10 @@ def config_failure_correlation_from_outcomes(
 
 def _load_project_outcomes(project_root: Path, project_id: str) -> tuple[RunFailureOutcome, ...]:
     db_path = project_database_path(project_root)
-    connection = connect_database(db_path)
+    connection = connect_database_readonly(db_path)
     try:
-        run_rows = connection.execute(
+        run_rows = execute(
+            connection,
             """
             SELECT runs.run_id, runs.config_json
             FROM runs
@@ -226,7 +227,8 @@ def _load_project_outcomes(project_root: Path, project_id: str) -> tuple[RunFail
             """,
             (project_id,),
         ).fetchall()
-        failure_rows = connection.execute(
+        failure_rows = execute(
+            connection,
             """
             SELECT failures.id, failures.run_id
             FROM failures

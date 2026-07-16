@@ -10,15 +10,24 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from pmem.repositories.decisions import DecisionRepository
 from pmem.repositories.experiments import ExperimentRecord, ExperimentRepository
 from pmem.repositories.failures import FailureRepository
 from pmem.repositories.notes import NoteRepository
 from pmem.repositories.runs import RunRecord, RunRepository
-from pmem.repositories.sqlite import connect_database, project_database_path
+from pmem.repositories.sqlite import (
+    connect_database,
+    connect_database_readonly,
+    project_database_path,
+)
 from pmem.repositories.tracked_paths import TrackedPathRepository
-from pmem.services.project_context import require_project_context
+from pmem.services.project_context import (
+    ProjectContext,
+    require_project_context,
+    require_project_context_readonly,
+)
 
 
 @dataclass(frozen=True)
@@ -61,15 +70,37 @@ def get_project_summary(project_root: str | Path) -> ProjectSummary:
     context = require_project_context(project_root)
     connection = connect_database(project_database_path(context.root))
     try:
-        project_id = context.project.id
-        experiments = ExperimentRepository(connection).list_for_project(project_id)
-        runs = RunRepository(connection).list_for_project(project_id)
-        tracked_paths = TrackedPathRepository(connection).list_for_project(project_id)
-        failures = FailureRepository(connection).list_for_project(project_id)
-        decisions = DecisionRepository(connection).list_for_project(project_id)
-        notes = NoteRepository(connection).list_for_project(project_id)
+        return _summary_from_connection(context, connection)
     finally:
         connection.close()
+
+
+def get_project_summary_readonly(project_root: str | Path) -> ProjectSummary:
+    """Read-only variant of :func:`get_project_summary`.
+
+    Shares the exact summary logic but resolves the project through a read-only
+    context/connection: it never migrates, backs up, ``chmod``s, or creates the
+    database, and it rejects a symlinked database/config.
+    """
+
+    context = require_project_context_readonly(project_root)
+    connection = connect_database_readonly(project_database_path(context.root))
+    try:
+        return _summary_from_connection(context, connection)
+    finally:
+        connection.close()
+
+
+def _summary_from_connection(context: ProjectContext, connection: Any) -> ProjectSummary:
+    """Single source of summary construction shared by both entry points."""
+
+    project_id = context.project.id
+    experiments = ExperimentRepository(connection).list_for_project(project_id)
+    runs = RunRepository(connection).list_for_project(project_id)
+    tracked_paths = TrackedPathRepository(connection).list_for_project(project_id)
+    failures = FailureRepository(connection).list_for_project(project_id)
+    decisions = DecisionRepository(connection).list_for_project(project_id)
+    notes = NoteRepository(connection).list_for_project(project_id)
 
     target_value = _target_value(context.project.target_json)
     best_run, best_metric_value = _best_run(

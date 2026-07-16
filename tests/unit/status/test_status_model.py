@@ -454,6 +454,47 @@ def test_invalid_payload_is_rejected(case: str) -> None:
         StatusPayload.model_validate(_REJECTIONS[case])
 
 
+_EMBEDDED_PATHS = {
+    "prefix_colon_posix": "path:/Users/private/secret",
+    "prefix_equals_posix": "source=/Users/private/secret",
+    "prefix_colon_windows": r"path:C:\private\secret",
+    "wrapped_parens": "(/Users/private/secret)",
+    "wrapped_quotes": '"/Users/private/secret"',
+    "file_uri_quoted": '"file:///Users/private/secret"',
+}
+
+
+@pytest.mark.parametrize("case", sorted(_EMBEDDED_PATHS))
+def test_embedded_absolute_path_is_rejected(case: str) -> None:
+    text = _EMBEDDED_PATHS[case]
+    with pytest.raises(ValidationError):
+        StatusPayload.model_validate(
+            _mutated(lambda d: d["warnings"][0].__setitem__("message", text))
+        )
+    with pytest.raises(ValidationError):
+        StatusPayload.model_validate(
+            _mutated(lambda d: d["next_action"].__setitem__("reason", text))
+        )
+
+
+@pytest.mark.parametrize(
+    "safe_text",
+    ["https://example.com/paper", "http://localhost:8000", "metric:accuracy", "ratio:1/2"],
+)
+def test_non_file_text_is_accepted(safe_text: str) -> None:
+    payload = StatusPayload.model_validate(
+        _mutated(lambda d: d["next_action"].__setitem__("reason", safe_text))
+    )
+    assert payload.next_action.reason == safe_text
+
+
+def test_delete_control_character_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        StatusPayload.model_validate(
+            _mutated(lambda d: d["next_action"].__setitem__("reason", "unsafe\x7ftext"))
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Focused positive checks                                                      #
 # --------------------------------------------------------------------------- #

@@ -5,7 +5,13 @@ import sqlite3
 import pytest
 
 from pmem.errors import PmemPersistenceError, PmemSecurityError
-from pmem.repositories.sqlite import connect_database, execute, project_database_path, query_one
+from pmem.repositories.sqlite import (
+    connect_database,
+    connect_database_readonly,
+    execute,
+    project_database_path,
+    query_one,
+)
 
 
 def test_project_database_path_uses_project_local_pmem_dir(tmp_path) -> None:
@@ -73,3 +79,72 @@ def test_query_one_uses_safe_execution_path(tmp_path) -> None:
 
     assert row is not None
     assert row["value"] == "value"
+
+
+def test_readonly_connection_cannot_write_or_change_file_metadata(tmp_path) -> None:
+    db_path = tmp_path / "pmem.db"
+    writable = connect_database(db_path)
+    try:
+        writable.execute("CREATE TABLE demo (id INTEGER PRIMARY KEY)")
+        writable.commit()
+    finally:
+        writable.close()
+    db_path.chmod(0o644)
+    before = (db_path.read_bytes(), db_path.stat().st_mtime_ns, db_path.stat().st_mode)
+
+    readonly = connect_database_readonly(db_path)
+    try:
+        assert readonly.execute("SELECT COUNT(*) FROM demo").fetchone()[0] == 0
+        with pytest.raises(sqlite3.OperationalError):
+            readonly.execute("INSERT INTO demo DEFAULT VALUES")
+    finally:
+        readonly.close()
+
+    assert (db_path.read_bytes(), db_path.stat().st_mtime_ns, db_path.stat().st_mode) == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pmem.db"]
+
+
+def test_readonly_connection_in_checkpointed_wal_mode_creates_no_sidecars(tmp_path) -> None:
+    db_path = tmp_path / "pmem.db"
+    writable = sqlite3.connect(db_path)
+    try:
+        assert writable.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        writable.execute("CREATE TABLE demo (value TEXT)")
+        writable.execute("INSERT INTO demo VALUES ('checkpointed')")
+        writable.commit()
+    finally:
+        writable.close()
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pmem.db"]
+
+    readonly = connect_database_readonly(db_path)
+    try:
+        assert readonly.execute("SELECT value FROM demo").fetchone()[0] == "checkpointed"
+    finally:
+        readonly.close()
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pmem.db"]
+
+
+def test_readonly_connection_rejects_active_wal_without_touching_sidecars(tmp_path) -> None:
+    db_path = tmp_path / "pmem.db"
+    writer = sqlite3.connect(db_path)
+    try:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        writer.execute("CREATE TABLE demo (value TEXT)")
+        writer.execute("INSERT INTO demo VALUES ('uncheckpointed')")
+        writer.commit()
+        before = {
+            path.name: (path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_mode)
+            for path in tmp_path.iterdir()
+        }
+
+        with pytest.raises(PmemPersistenceError, match="active SQLite sidecar state"):
+            connect_database_readonly(db_path)
+
+        after = {
+            path.name: (path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_mode)
+            for path in tmp_path.iterdir()
+        }
+        assert after == before
+    finally:
+        writer.close()

@@ -41,7 +41,11 @@ from pmem.repositories.failures import FailureRecord, FailureRepository
 from pmem.repositories.notes import NoteRecord, NoteRepository
 from pmem.repositories.projects import ProjectRecord, ProjectRepository
 from pmem.repositories.runs import RunRecord, RunRepository
-from pmem.repositories.sqlite import connect_database, project_database_path
+from pmem.repositories.sqlite import (
+    connect_database,
+    connect_database_readonly,
+    project_database_path,
+)
 from pmem.repositories.tracked_paths import TrackedPathRecord, TrackedPathRepository
 from pmem.utils.hashing import compute_text_hash
 
@@ -142,6 +146,16 @@ def build_graph_from_database(db_path: str | Path) -> GraphDocument:
     if not path.exists():
         raise PmemNotFoundError("Project database was not found.")
     connection = connect_database(path)
+    try:
+        return _GraphIngestion(connection).build()
+    finally:
+        connection.close()
+
+
+def build_graph_from_database_readonly(db_path: str | Path) -> GraphDocument:
+    """Build an in-memory graph document using a strictly read-only connection."""
+
+    connection = connect_database_readonly(db_path)
     try:
         return _GraphIngestion(connection).build()
     finally:

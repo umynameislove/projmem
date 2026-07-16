@@ -16,15 +16,20 @@ from pmem.errors import (
     PmemSecurityError,
     PmemValidationError,
 )
-from pmem.graph.ingestion import build_graph_from_project
+from pmem.graph.ingestion import build_graph_from_database_readonly
 from pmem.graph.privacy import GRAPH_JSON_FILE_MODE
 from pmem.recommendations import (
     Recommendation,
     generate_recommendations,
     link_recommendation_evidence_from_document,
 )
-from pmem.repositories.sqlite import PMEM_DIRNAME, connect_database, execute, project_database_path
-from pmem.services.project_context import require_project_context
+from pmem.repositories.sqlite import (
+    PMEM_DIRNAME,
+    connect_database_readonly,
+    execute,
+    project_database_path,
+)
+from pmem.services.project_context import require_project_context_readonly
 
 RECOMMENDATION_LIST_RESULT_VERSION = "recommendation-list-result-v1"
 RECOMMENDATION_DETAIL_RESULT_VERSION = "recommendation-detail-result-v1"
@@ -48,7 +53,7 @@ def recommendation_list_payload(
     """Return recommendation CLI recommendation candidates with evidence-link warnings."""
 
     limit = _clean_limit(max_recommendations)
-    context = require_project_context(project_root)
+    context = require_project_context_readonly(project_root)
     recommendations = generate_recommendations(context.root, max_recommendations=limit)
     basis_counts = _basis_counts(context.root, context.project.id)
     payload_items = _recommendation_payloads(context.root, recommendations)
@@ -115,7 +120,7 @@ def export_recommendations(
 ) -> RecommendationExportResult:
     """Write recommendation candidates to a private project-local JSON file."""
 
-    context = require_project_context(project_root)
+    context = require_project_context_readonly(project_root)
     output = _resolve_recommendation_export_path(context.root, output_path)
     payload = recommendation_list_payload(context.root, max_recommendations=max_recommendations)
     export_payload = {
@@ -147,8 +152,8 @@ def _recommendation_payloads(
 ) -> list[dict[str, Any]]:
     if not recommendations:
         return []
-    document = build_graph_from_project(project_root)
     db_path = project_database_path(project_root)
+    document = build_graph_from_database_readonly(db_path)
     payloads: list[dict[str, Any]] = []
     for recommendation in recommendations:
         links = link_recommendation_evidence_from_document(db_path, document, recommendation)
@@ -160,7 +165,7 @@ def _recommendation_payloads(
 
 
 def _basis_counts(project_root: Path, project_id: str) -> dict[str, int]:
-    connection = connect_database(project_database_path(project_root))
+    connection = connect_database_readonly(project_database_path(project_root))
     try:
         experiments = execute(
             connection,
@@ -288,7 +293,7 @@ def _data_quality_warnings(
 
 
 def _load_run_quality_rows(project_root: Path, project_id: str) -> tuple[list[Any], set[str]]:
-    connection = connect_database(project_database_path(project_root))
+    connection = connect_database_readonly(project_database_path(project_root))
     try:
         rows = execute(
             connection,

@@ -42,6 +42,7 @@ from typing import Any, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from pmem.domain.common import MetricDirection, PmemStrEnum
+from pmem.status.textsafety import contains_absolute_path, contains_control_chars
 
 _EnumT = TypeVar("_EnumT", bound=Enum)
 
@@ -66,10 +67,8 @@ _MAX_REMEDIATION_LENGTH = 256
 _MAX_COMMAND_LENGTH = 256
 _MAX_WARNINGS = 100
 
-_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 _SAFE_CODE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
-_ABS_PATH_SPLIT_RE = re.compile(r"[\s()\[\]{}\"'<>,=]+")
 _SHELL_METACHARACTERS: tuple[str, ...] = (
     "&&",
     "||",
@@ -91,28 +90,17 @@ _SUGGESTED_COMMAND_PREFIX = "pmem "
 # Reusable validation helpers                                                  #
 # --------------------------------------------------------------------------- #
 def _reject_control_chars(value: str) -> None:
-    if any(ord(char) < 32 for char in value):
+    if contains_control_chars(value):
         msg = "status text fields must not contain control characters"
         raise ValueError(msg)
 
 
 def _reject_absolute_path(value: str) -> None:
-    """Reject absolute paths, including when wrapped in quotes/parens or a URL."""
+    """Reject absolute paths (shared detector; no drift with the producer)."""
 
-    if "file://" in value.lower():
-        msg = "status text fields must not contain a file:// path"
+    if contains_absolute_path(value):
+        msg = "status text fields must not contain an absolute filesystem path"
         raise ValueError(msg)
-    for raw_token in _ABS_PATH_SPLIT_RE.split(value):
-        token = raw_token.strip()
-        if not token:
-            continue
-        normalized = token.replace("\\", "/")
-        if normalized.startswith("/"):
-            msg = "status text fields must not contain an absolute filesystem path"
-            raise ValueError(msg)
-        if _WINDOWS_DRIVE_RE.match(token) or _WINDOWS_DRIVE_RE.match(normalized):
-            msg = "status text fields must not contain an absolute filesystem path"
-            raise ValueError(msg)
 
 
 def _clean_text(value: str, *, max_length: int) -> str:

@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from pmem.errors import PmemValidationError
-from pmem.repositories.sqlite import connect_database, project_database_path
-from pmem.services.project_context import require_project_context
+from pmem.repositories.sqlite import connect_database_readonly, execute, project_database_path
+from pmem.services.project_context import require_project_context_readonly
 from pmem.utils.hashing import compute_text_hash
 
 TEMPORAL_ANALYSIS_SCHEMA_VERSION = "temporal-analysis-v1"
@@ -89,7 +89,7 @@ def temporal_analysis_payload(
         min_decision_side_runs=min_decision_side_runs,
         max_decision_results=max_decision_results,
     )
-    context = require_project_context(project_root)
+    context = require_project_context_readonly(project_root)
     runs, decisions, skipped_counts = _load_project_temporal_inputs(
         context.root,
         context.project.id,
@@ -233,9 +233,10 @@ def _load_project_temporal_inputs(
     project_id: str,
 ) -> tuple[tuple[TemporalRunOutcome, ...], tuple[DecisionEvent, ...], dict[str, int]]:
     db_path = project_database_path(project_root)
-    connection = connect_database(db_path)
+    connection = connect_database_readonly(db_path)
     try:
-        run_rows = connection.execute(
+        run_rows = execute(
+            connection,
             """
             SELECT runs.run_id, runs.experiment_id, runs.metrics_json, runs.timestamp
             FROM runs
@@ -245,7 +246,8 @@ def _load_project_temporal_inputs(
             """,
             (project_id,),
         ).fetchall()
-        decision_rows = connection.execute(
+        decision_rows = execute(
+            connection,
             """
             SELECT id, experiment_id, created_at
             FROM decisions
