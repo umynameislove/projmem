@@ -9,6 +9,7 @@ unreadable graph artifacts fall back to a full rebuild with explicit metadata.
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +20,12 @@ from pmem.graph.engine import GraphEngine
 from pmem.graph.ingestion import GraphDocument, build_graph_from_project
 from pmem.graph.persistence import default_graph_artifact_path, read_graph_document
 from pmem.graph.schema import GRAPH_SCHEMA_VERSION
-from pmem.repositories.sqlite import connect_database, project_database_path
+from pmem.repositories.sqlite import (
+    connect_database,
+    connect_database_readonly,
+    execute,
+    project_database_path,
+)
 from pmem.utils.hashing import compute_text_hash
 
 GRAPH_INCREMENTAL_METHOD = "conservative-source-fingerprint-v1"
@@ -143,14 +149,28 @@ def compute_graph_source_fingerprint(db_path: str | Path) -> GraphSourceFingerpr
 
     connection = connect_database(path)
     try:
-        canonical_tables: dict[str, list[dict[str, object]]] = {}
-        table_counts: dict[str, int] = {}
-        for table in _SOURCE_TABLES:
-            rows = _read_source_rows(connection, table)
-            canonical_tables[table] = rows
-            table_counts[table] = len(rows)
+        return _fingerprint_from_connection(connection)
     finally:
         connection.close()
+
+
+def compute_graph_source_fingerprint_readonly(db_path: str | Path) -> GraphSourceFingerprint:
+    """Read-only variant of :func:`compute_graph_source_fingerprint`."""
+
+    connection = connect_database_readonly(db_path)
+    try:
+        return _fingerprint_from_connection(connection)
+    finally:
+        connection.close()
+
+
+def _fingerprint_from_connection(connection: sqlite3.Connection) -> GraphSourceFingerprint:
+    canonical_tables: dict[str, list[dict[str, object]]] = {}
+    table_counts: dict[str, int] = {}
+    for table in _SOURCE_TABLES:
+        rows = _read_source_rows(connection, table)
+        canonical_tables[table] = rows
+        table_counts[table] = len(rows)
 
     payload = {
         "method": GRAPH_INCREMENTAL_METHOD,
@@ -366,7 +386,10 @@ def _metadata_source_fingerprint(document: GraphDocument) -> str | None:
 
 def _read_source_rows(connection: Any, table: str) -> list[dict[str, object]]:
     order_column = _TABLE_ORDER_COLUMNS[table]
-    cursor = connection.execute(f"SELECT * FROM {table} ORDER BY {order_column}")  # noqa: S608
+    cursor = execute(
+        connection,
+        f"SELECT * FROM {table} ORDER BY {order_column}",  # noqa: S608
+    )
     rows: list[dict[str, object]] = []
     for row in cursor.fetchall():
         rows.append(_canonical_row(table, dict(row)))

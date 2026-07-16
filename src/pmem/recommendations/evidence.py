@@ -14,12 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from pmem.errors import PmemNotFoundError, PmemValidationError
-from pmem.graph.ingestion import GraphDocument, GraphNode, build_graph_from_project
+from pmem.graph.ingestion import GraphDocument, GraphNode, build_graph_from_database_readonly
 from pmem.graph.provenance import GraphProvenance
 from pmem.graph.schema import EdgeType, NodeType
 from pmem.recommendations.model import EvidenceItem, Recommendation
-from pmem.repositories.sqlite import connect_database, execute, project_database_path
-from pmem.services.project_context import require_project_context
+from pmem.repositories.sqlite import connect_database_readonly, execute, project_database_path
+from pmem.services.project_context import require_project_context_readonly
 
 RECOMMENDATION_EVIDENCE_LINK_SCHEMA_VERSION = "recommendation-evidence-link-v1"
 RECOMMENDATION_EVIDENCE_LINK_METHOD = "graph_sqlite_entity_verification_v1"
@@ -107,8 +107,8 @@ def link_recommendation_evidence(
 ) -> RecommendationEvidenceLinks:
     """Verify recommendation evidence against a fresh project graph and SQLite."""
 
-    context = require_project_context(project_root)
-    document = build_graph_from_project(context.root)
+    context = require_project_context_readonly(project_root)
+    document = build_graph_from_database_readonly(project_database_path(context.root))
     return link_recommendation_evidence_from_document(
         project_database_path(context.root),
         document,
@@ -135,7 +135,7 @@ def link_recommendation_evidence_from_document(
     _reject_duplicate_evidence("opposing_evidence", recommendation.opposing_evidence)
     _reject_duplicate_evidence("related_failures", recommendation.related_failures)
 
-    connection = connect_database(database)
+    connection = connect_database_readonly(database)
     try:
         supporting = _link_bucket(connection, nodes, recommendation.supporting_evidence)
         opposing = _link_bucket(connection, nodes, recommendation.opposing_evidence)

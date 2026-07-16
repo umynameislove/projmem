@@ -65,6 +65,31 @@ def apply_migrations(
         connection.close()
 
 
+def verify_schema_current(
+    connection: sqlite3.Connection,
+    migrations: tuple[Migration, ...] = CURRENT_MIGRATIONS,
+) -> None:
+    """Verify (never migrate) that every known migration is applied and intact.
+
+    Raises a safe :class:`PmemPersistenceError` when a migration is missing or
+    when a recorded checksum no longer matches. Used by read-only paths that
+    must not run migrations. The error message never leaks SQL, paths, or the
+    expected/actual checksum values.
+    """
+
+    try:
+        applied = _load_applied_migrations(connection)
+    except sqlite3.Error as exc:
+        raise PmemPersistenceError("The project database could not be read.") from exc
+    _check_applied_checksums(applied, migrations)
+    missing = [migration.version for migration in migrations if migration.version not in applied]
+    if missing:
+        raise PmemPersistenceError(
+            "The projmem database schema is out of date. "
+            "Run `pmem init` to migrate before this read-only command."
+        )
+
+
 def _load_applied_migrations(connection: sqlite3.Connection) -> dict[str, str]:
     """Load migration versions if the tracking table already exists."""
 

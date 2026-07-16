@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from pmem.graph.ingestion import GraphDocument, build_graph_from_project
+from pmem.graph.ingestion import GraphDocument, build_graph_from_database_readonly
 from pmem.graph.schema import NodeType, config_node_id, failure_node_id, run_node_id
 from pmem.patterns.anomaly import anomaly_detection_payload
 from pmem.patterns.config_failure import _features_for_config
@@ -28,8 +28,8 @@ from pmem.recommendations.model import (
     RecommendationConfidence,
     RecommendationType,
 )
-from pmem.repositories.sqlite import connect_database, execute, project_database_path
-from pmem.services.project_context import require_project_context
+from pmem.repositories.sqlite import connect_database_readonly, execute, project_database_path
+from pmem.services.project_context import require_project_context_readonly
 from pmem.utils.hashing import compute_text_hash
 
 DEFAULT_MAX_RECOMMENDATIONS = 5
@@ -102,12 +102,12 @@ def _load_generation_context(
     *,
     generated_at: datetime | None,
 ) -> _GenerationContext:
-    project_context = require_project_context(project_root)
+    project_context = require_project_context_readonly(project_root)
     clean_generated_at = generated_at or datetime.now(timezone.utc)
     if clean_generated_at.tzinfo is None or clean_generated_at.utcoffset() is None:
         clean_generated_at = clean_generated_at.replace(tzinfo=timezone.utc)
     db_path = project_database_path(project_context.root)
-    document = build_graph_from_project(project_context.root)
+    document = build_graph_from_database_readonly(db_path)
     runs = _load_run_evidence(
         db_path,
         project_id=project_context.project.id,
@@ -133,7 +133,7 @@ def _load_run_evidence(
     project_id: str,
     primary_metric: str | None,
 ) -> tuple[_RunEvidence, ...]:
-    connection = connect_database(db_path)
+    connection = connect_database_readonly(db_path)
     try:
         run_rows = execute(
             connection,
