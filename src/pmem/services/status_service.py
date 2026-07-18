@@ -19,8 +19,12 @@ shared read-only persistence seam:
 An out-of-date or checksum-tampered schema raises a safe ``PmemError`` instead
 of migrating it.
 
-Task boundary with STS-003: this module **collects** state and **assembles** a
-payload but never selects the single ``next_action``.
+Task boundary with STS-003: ``collect_status_state`` and
+``assemble_status_payload`` never choose the ``next_action`` — the caller
+supplies it. The next-action *policy* lives in :mod:`pmem.status.next_action`;
+the ``build_status_payload`` convenience here simply applies that policy
+(``select_next_action``) and delegates to ``assemble_status_payload`` without
+duplicating any assembly logic.
 
 Privacy: the service guarantees payload **shape** and path/control safety and
 redacts unsafe project text into stable SHA-256 labels using the same absolute
@@ -58,6 +62,7 @@ from pmem.status import (
     WarningSeverity,
     WarningSource,
 )
+from pmem.status.next_action import select_next_action
 from pmem.status.textsafety import contains_absolute_path, contains_control_chars
 from pmem.summary import ProjectSummary, get_project_summary_readonly
 from pmem.utils.hashing import compute_text_hash
@@ -164,6 +169,17 @@ def assemble_status_payload(
         network=False,
         raw_text_in_output=False,
     )
+
+
+def build_status_payload(state: CollectedStatusState) -> StatusPayload:
+    """Select the single next action (STS-003) and assemble the payload.
+
+    Thin convenience wrapper that does not duplicate assembly logic: it applies
+    the deterministic next-action policy and delegates to
+    :func:`assemble_status_payload`.
+    """
+
+    return assemble_status_payload(state, next_action=select_next_action(state))
 
 
 # --------------------------------------------------------------------------- #
