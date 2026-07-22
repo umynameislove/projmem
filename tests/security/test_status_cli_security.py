@@ -33,12 +33,12 @@ def test_status_cli_does_not_mutate_private_project_state(monkeypatch, tmp_path)
 def test_status_cli_does_not_expose_command_config_or_failure_text(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     _init_project("privacy")
-    command_secret = "COMMAND_SECRET_4f4d"
-    config_secret = "CONFIG_SECRET_83b9"
-    failure_secret = "FAILURE_SECRET_1ac7"
+    command_sensitive_marker = "COMMAND_SECRET_4f4d"
+    config_sensitive_marker = "CONFIG_SECRET_83b9"
+    failure_sensitive_marker = "FAILURE_SECRET_1ac7"
     config_path = tmp_path / "config.json"
     config_path.write_text(
-        json.dumps({"api_key": config_secret, "learning_rate": 0.1}),
+        json.dumps({"api_key": config_sensitive_marker, "learning_rate": 0.1}),
         encoding="utf-8",
     )
     failed = runner.invoke(
@@ -50,13 +50,13 @@ def test_status_cli_does_not_expose_command_config_or_failure_text(monkeypatch, 
             "--",
             sys.executable,
             "-c",
-            f"import sys; marker={command_secret!r}; sys.exit(2)",
+            f"import sys; marker={command_sensitive_marker!r}; sys.exit(2)",
         ],
     )
     run_id = failed.stdout.split()[1]
     logged = runner.invoke(
         app,
-        ["log-failure", run_id, "RuntimeError", failure_secret],
+        ["log-failure", run_id, "RuntimeError", failure_sensitive_marker],
     )
 
     result = runner.invoke(app, ["status"])
@@ -64,9 +64,9 @@ def test_status_cli_does_not_expose_command_config_or_failure_text(monkeypatch, 
     assert failed.exit_code == 0
     assert logged.exit_code == 0
     assert result.exit_code == 0
-    assert command_secret not in result.stdout
-    assert config_secret not in result.stdout
-    assert failure_secret not in result.stdout
+    assert command_sensitive_marker not in result.stdout
+    assert config_sensitive_marker not in result.stdout
+    assert failure_sensitive_marker not in result.stdout
     assert str(tmp_path) not in result.stdout
     assert "raw_text_in_output=false" in result.stdout
 
@@ -136,9 +136,9 @@ def test_status_cli_does_not_follow_graph_symlink(monkeypatch, tmp_path) -> None
     monkeypatch.chdir(tmp_path)
     _init_project("graph-symlink")
     _run_python("print('ok')")
-    outside_secret = "OUTSIDE_GRAPH_SECRET_7d2e"
+    outside_sensitive_marker = "OUTSIDE_GRAPH_SECRET_7d2e"
     outside = tmp_path.parent / "outside-status-graph.json"
-    outside.write_text(outside_secret, encoding="utf-8")
+    outside.write_text(outside_sensitive_marker, encoding="utf-8")
     graph_path = tmp_path / ".pmem" / "graph.json"
     try:
         os.symlink(outside, graph_path)
@@ -151,8 +151,8 @@ def test_status_cli_does_not_follow_graph_symlink(monkeypatch, tmp_path) -> None
     assert "Graph: invalid reason=graph_symlink" in result.stdout
     assert "Action: resolve_graph_symlink" in result.stdout
     assert "Command: pmem graph --help" in result.stdout
-    assert outside_secret not in result.stdout
-    assert outside.read_text(encoding="utf-8") == outside_secret
+    assert outside_sensitive_marker not in result.stdout
+    assert outside.read_text(encoding="utf-8") == outside_sensitive_marker
 
 
 def _init_project(name: str) -> None:
