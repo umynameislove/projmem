@@ -14,6 +14,7 @@ import typer
 from rich.console import Console
 
 from pmem import __version__
+from pmem.cli.status_output import print_status_text
 from pmem.domain.conflicts import ConflictCheckReport
 from pmem.domain.import_bundle import ImportDryRunReport
 from pmem.errors import PmemError, PmemValidationError
@@ -88,6 +89,7 @@ from pmem.services.shared_paths import (
     shared_path_registration_json,
     shared_path_statuses_json,
 )
+from pmem.services.status_service import build_status_payload, collect_status_state
 from pmem.services.tracking import track_path
 from pmem.summary import ProjectSummary, get_project_summary, summary_json_payload
 
@@ -614,6 +616,22 @@ def summary_command(
         return
 
     _print_summary(summary)
+
+
+@app.command("status")
+def status_command() -> None:
+    """Print concise read-only project status and exactly one next action."""
+
+    try:
+        state = collect_status_state(
+            project_root=Path.cwd(),
+            evaluate_recommendations=False,
+        )
+        payload = build_status_payload(state)
+    except PmemError as exc:
+        _exit_with_error(exc)
+
+    print_status_text(payload, console=console)
 
 
 @app.command("mcp")
