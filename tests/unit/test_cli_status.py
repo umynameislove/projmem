@@ -12,7 +12,7 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from pmem.cli.status_output import print_status_text
+from pmem.cli.status_output import print_status_text, render_status_json
 from pmem.errors import PmemPersistenceError
 from pmem.status import RecommendationMode, StatusPayload, StatusProject, StatusRecommendations
 
@@ -160,15 +160,133 @@ def test_status_text_disables_rich_markup_and_terminal_highlighting() -> None:
     assert "\x1b" not in text
 
 
-def test_status_help_is_registered_as_text_only_command() -> None:
+def test_status_help_documents_machine_readable_json_option() -> None:
     root_help = runner.invoke(cli_module.app, ["--help"])
-    status_help = runner.invoke(cli_module.app, ["status", "--help"])
+    status_help = runner.invoke(cli_module.app, ["status", "--help"], terminal_width=240)
 
     assert root_help.exit_code == 0
     assert "status" in root_help.stdout
     assert status_help.exit_code == 0
-    assert "Print concise read-only project status" in status_help.stdout
-    assert "--json" not in status_help.stdout
+    assert "--json" in status_help.stdout
+    # Assert the rendered contract through wrap-stable fragments; Rich inserts
+    # table borders between wrapped lines, so the full constant is not a stable
+    # substring even with a requested terminal width.
+    assert "machine-readable" in status_help.stdout
+    assert "status-v1" in status_help.stdout
+    assert "check the exit code before parsing" in status_help.stdout
+    assert "machine-readable" in cli_module.STATUS_JSON_OPTION_HELP
+    assert "status-v1" in cli_module.STATUS_JSON_OPTION_HELP
+    assert cli_module.STATUS_COMMAND_HELP.startswith("Print concise read-only project status")
+    assert "check the exit code before parsing" in cli_module.STATUS_COMMAND_HELP
+
+
+def test_status_help_does_not_leak_developer_docstring_markup() -> None:
+    """``--help`` is user-facing: the rationale docstring must not reach it."""
+
+    status_help = runner.invoke(cli_module.app, ["status", "--help"])
+
+    assert status_help.exit_code == 0
+    assert "``" not in status_help.stdout  # no raw RST markup
+    assert "_exit_with_error" not in status_help.stdout  # no internal symbols
+    assert "repository-wide" not in status_help.stdout
+
+
+def test_render_status_json_serializes_the_validated_model() -> None:
+    payload = _payload()
+    document = render_status_json(payload)
+
+    assert document == payload.model_dump_json(indent=2)
+    assert not document.endswith("\n")
+    assert json.loads(document) == payload.model_dump(mode="json")
+
+
+def test_status_json_matches_the_committed_status_v1_snapshot() -> None:
+    """Golden snapshot lock for the rendered ``status-v1`` document.
+
+    The exact comparison locks field order, indentation, values and the final
+    newline in addition to document shape. A deliberate serialized-contract
+    change therefore requires an explicit fixture update.
+    """
+
+    expected = _FIXTURE_PATH.read_text(encoding="utf-8")
+    rendered = render_status_json(_payload()) + "\n"
+
+    assert rendered == expected
+
+
+def test_status_json_serializes_payload_and_skips_text_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload()
+    calls: list[tuple[Path, bool]] = []
+
+    def _collect(project_root: Path, *, evaluate_recommendations: bool) -> object:
+        calls.append((project_root, evaluate_recommendations))
+        return object()
+
+    def _text_renderer(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("JSON mode must not call the text renderer")
+
+    monkeypatch.setattr(cli_module, "collect_status_state", _collect)
+    monkeypatch.setattr(cli_module, "build_status_payload", lambda _state: payload)
+    monkeypatch.setattr(cli_module, "print_status_text", _text_renderer)
+
+    result = runner.invoke(cli_module.app, ["status", "--json"])
+
+    assert result.exit_code == 0
+    # collected exactly once, read-only, with recommendation generation disabled
+    assert calls == [(Path.cwd(), False)]
+    assert json.loads(result.stdout) == payload.model_dump(mode="json")
+    assert result.stdout == render_status_json(payload) + "\n"
+
+
+def test_status_json_output_is_deterministic_clean_and_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload()
+    monkeypatch.setattr(cli_module, "collect_status_state", lambda **_k: object())
+    monkeypatch.setattr(cli_module, "build_status_payload", lambda _state: payload)
+
+    first = runner.invoke(cli_module.app, ["status", "--json"])
+    second = runner.invoke(cli_module.app, ["status", "--json"])
+
+    assert first.exit_code == 0
+    assert first.stdout == second.stdout  # byte-for-byte deterministic
+    assert first.stdout.endswith("\n")
+    assert not first.stdout.endswith("\n\n")
+    assert "\x1b" not in first.stdout  # no ANSI escapes
+    document = json.loads(first.stdout)
+    assert document["schema_version"] == "status-v1"
+    assert isinstance(document["warnings"], list)
+    assert isinstance(document["next_action"], dict)
+    assert document["database_mutation"] is False
+    assert document["network"] is False
+    assert document["raw_text_in_output"] is False
+    # a genuinely null field stays JSON null, not the string "null"
+    null_payload = payload.model_copy(
+        update={"baseline": payload.baseline.model_copy(update={"run_id": None})}
+    )
+    monkeypatch.setattr(cli_module, "build_status_payload", lambda _state: null_payload)
+    nulled = json.loads(runner.invoke(cli_module.app, ["status", "--json"]).stdout)
+    assert nulled["baseline"]["run_id"] is None
+
+
+def test_status_json_errors_use_the_existing_convention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(*_args: Any, **_kwargs: Any) -> Any:
+        raise PmemPersistenceError("Project status could not be read safely.")
+
+    monkeypatch.setattr(cli_module, "collect_status_state", _raise)
+
+    result = runner.invoke(cli_module.app, ["status", "--json"])
+
+    assert result.exit_code == 1
+    assert "Error: Project status could not be read safely." in result.stdout
+    assert '"schema_version"' not in result.stdout  # no fake success payload
+    assert "Traceback" not in result.stdout
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stdout)
 
 
 def test_status_renderer_layer_has_no_service_or_filesystem_dependency() -> None:

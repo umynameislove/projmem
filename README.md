@@ -84,6 +84,7 @@ corrupted-dataset runs. projmem recorded every run, captured 16 confirmed failur
 | `pmem track <path>` | Hash and register a file |
 | `pmem run -- <cmd>` | Run a command; capture stdout/stderr, Git state, exit code, metrics |
 | `pmem log-failure <run-id> <type> <desc>` | Store a confirmed failure (built-in taxonomy) |
+| `pmem status` | One screen: counts, best run, baseline, graph freshness, warnings, and exactly one next action (`--json` for scripts) |
 | `pmem summary` | Project status, best run, timeline, warnings |
 | `pmem patterns list` | Config / dataset / temporal / anomaly failure screening |
 | `pmem recommend list` | Evidence-backed recommendation candidates |

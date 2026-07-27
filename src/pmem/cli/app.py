@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 
 from pmem import __version__
-from pmem.cli.status_output import print_status_text
+from pmem.cli.status_output import print_status_text, render_status_json
 from pmem.domain.conflicts import ConflictCheckReport
 from pmem.domain.import_bundle import ImportDryRunReport
 from pmem.errors import PmemError, PmemValidationError
@@ -618,9 +618,38 @@ def summary_command(
     _print_summary(summary)
 
 
-@app.command("status")
-def status_command() -> None:
-    """Print concise read-only project status and exactly one next action."""
+STATUS_JSON_OPTION_HELP = "Emit the machine-readable status-v1 payload as JSON instead of text."
+STATUS_COMMAND_HELP = (
+    "Print concise read-only project status and exactly one next action. "
+    "With --json, stdout is a single status-v1 document only when the exit "
+    "code is 0, so check the exit code before parsing."
+)
+
+
+@app.command("status", help=STATUS_COMMAND_HELP)
+def status_command(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help=STATUS_JSON_OPTION_HELP),
+    ] = False,
+) -> None:
+    """Print concise read-only project status and exactly one next action.
+
+    The user-facing help text lives in ``STATUS_COMMAND_HELP`` so that this
+    docstring can record the rationale without leaking into ``--help`` output.
+
+    Output contract for ``--json``: on success stdout is exactly one
+    ``status-v1`` document followed by one newline. On failure the command
+    follows the repository-wide CLI convention -- a human-readable
+    ``Error: ...`` line and exit code 1 -- and emits no JSON at all, rather
+    than a fake JSON envelope that would masquerade as a valid payload.
+
+    Because that convention currently writes diagnostics to stdout (see
+    ``_exit_with_error``), stdout is only guaranteed to be parseable JSON when
+    the exit code is 0. Routing CLI diagnostics to stderr is a
+    repository-wide change and is deliberately not done here, where it would
+    make ``status`` inconsistent with the other 30+ commands.
+    """
 
     try:
         state = collect_status_state(
@@ -630,6 +659,10 @@ def status_command() -> None:
         payload = build_status_payload(state)
     except PmemError as exc:
         _exit_with_error(exc)
+
+    if json_output:
+        typer.echo(render_status_json(payload))
+        return
 
     print_status_text(payload, console=console)
 

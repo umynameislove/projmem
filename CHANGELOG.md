@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- `pmem status` prints a concise read-only project status on one screen —
+  objective and primary metric, run/failure/decision/tracked-path counts, best
+  observed run, baseline, evidence-graph freshness, and data-quality warnings —
+  followed by exactly one next action with its reason and a suggested command.
+  The command is strictly read-only: it never migrates, backs up, `chmod`s, or
+  creates the database, it refuses to follow a symlinked database or graph
+  artifact, and it reports a stale or checksum-tampered schema as a safe error
+  instead of upgrading it.
+- `pmem status --json` emits the versioned `status-v1` payload for scripts,
+  editors, and assistant integrations. Text and JSON are rendered from the same
+  validated model, reducing the risk of semantic drift between the two views.
+  The document is deterministic (no timestamps, stable field order, 2-space
+  indentation), carries no ANSI decoration, and is followed by exactly one
+  newline.
+- Recommendation candidates are not generated while rendering status, so
+  `recommendations.mode` currently reports `not_evaluated`. A persisted
+  recommendation lifecycle is required before status can report active
+  recommendation counts.
+
+### Notes
+
+- On failure, `pmem status --json` follows the existing CLI convention — a
+  human-readable `Error: ...` line and exit code 1 — and emits no JSON rather
+  than a fake envelope that would masquerade as a valid `status-v1` payload.
+  Diagnostics currently go to stdout like every other command, so callers must
+  check the exit code before parsing stdout.
+
 ## 0.4.0a1 (2026-06-02)
 
 ### Changed

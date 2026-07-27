@@ -92,6 +92,29 @@ def print_status_text(payload: StatusPayload, *, console: Console) -> None:
     )
 
 
+def render_status_json(payload: StatusPayload) -> str:
+    """Serialize a validated ``status-v1`` payload to deterministic JSON text.
+
+    The JSON is produced directly from the validated model (a single source of
+    truth shared with the text renderer), so it inherits exactly the guarantees
+    the contract itself enforces: shape, strict typing, closed vocabularies,
+    finite numbers, and absolute-path/control-character rejection. It does
+    **not** add any guarantee the contract lacks -- in particular the contract
+    cannot prove that arbitrary human-authored text is free of secrets, so
+    producers remain responsible for keeping raw failure/decision/note text out
+    of the payload (see :mod:`pmem.status.model`).
+
+    Output is deterministic: Pydantic emits fields in declaration order with
+    stable 2-space indentation, no trailing newline, no Rich/ANSI decoration,
+    and no runtime-dependent values (the contract carries no timestamps).
+    Rejecting NaN/infinity at the contract boundary also keeps the document
+    parseable by strict JSON readers, which do not accept those literals. The
+    caller is responsible for writing it followed by exactly one newline.
+    """
+
+    return payload.model_dump_json(indent=2)
+
+
 def _recommendation_line(payload: StatusPayload) -> str:
     recommendations = payload.recommendations
     parts = [f"Recommendations: {recommendations.mode.value}"]
