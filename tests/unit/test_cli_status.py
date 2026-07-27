@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from click import unstyle
 from rich.console import Console
 from typer.testing import CliRunner
 
@@ -163,17 +164,19 @@ def test_status_text_disables_rich_markup_and_terminal_highlighting() -> None:
 def test_status_help_documents_machine_readable_json_option() -> None:
     root_help = runner.invoke(cli_module.app, ["--help"])
     status_help = runner.invoke(cli_module.app, ["status", "--help"], terminal_width=240)
+    root_text = unstyle(root_help.stdout)
+    status_text = unstyle(status_help.stdout)
 
     assert root_help.exit_code == 0
-    assert "status" in root_help.stdout
+    assert "status" in root_text
     assert status_help.exit_code == 0
-    assert "--json" in status_help.stdout
+    assert "--json" in status_text
     # Assert the rendered contract through wrap-stable fragments; Rich inserts
     # table borders between wrapped lines, so the full constant is not a stable
     # substring even with a requested terminal width.
-    assert "machine-readable" in status_help.stdout
-    assert "status-v1" in status_help.stdout
-    assert "check the exit code before parsing" in status_help.stdout
+    assert "machine-readable" in status_text
+    assert "status-v1" in status_text
+    assert "check the exit code before parsing" in status_text
     assert "machine-readable" in cli_module.STATUS_JSON_OPTION_HELP
     assert "status-v1" in cli_module.STATUS_JSON_OPTION_HELP
     assert cli_module.STATUS_COMMAND_HELP.startswith("Print concise read-only project status")
@@ -184,11 +187,12 @@ def test_status_help_does_not_leak_developer_docstring_markup() -> None:
     """``--help`` is user-facing: the rationale docstring must not reach it."""
 
     status_help = runner.invoke(cli_module.app, ["status", "--help"])
+    status_text = unstyle(status_help.stdout)
 
     assert status_help.exit_code == 0
-    assert "``" not in status_help.stdout  # no raw RST markup
-    assert "_exit_with_error" not in status_help.stdout  # no internal symbols
-    assert "repository-wide" not in status_help.stdout
+    assert "``" not in status_text  # no raw RST markup
+    assert "_exit_with_error" not in status_text  # no internal symbols
+    assert "repository-wide" not in status_text
 
 
 def test_render_status_json_serializes_the_validated_model() -> None:
