@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import sys
 
+import pytest
 from typer.testing import CliRunner
 
 from pmem.cli.app import app
+from pmem.status import StatusPayload
 
 runner = CliRunner()
 
@@ -100,6 +103,115 @@ def test_status_text_is_deterministic(monkeypatch, tmp_path) -> None:
     assert first.exit_code == 0
     assert second.exit_code == 0
     assert first.stdout == second.stdout
+
+
+def test_status_json_agrees_with_text_and_locks_the_contract(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert (
+        runner.invoke(
+            app,
+            [
+                "init",
+                "--name",
+                "json-demo",
+                "--objective",
+                "Train",
+                "--metric",
+                "accuracy",
+                "--metric-direction",
+                "max",
+                "--target",
+                "0.9",
+            ],
+        ).exit_code
+        == 0
+    )
+
+    def _both() -> tuple[dict, str]:
+        text = runner.invoke(app, ["status"])
+        raw = runner.invoke(app, ["status", "--json"])
+        assert text.exit_code == 0
+        assert raw.exit_code == 0
+        document = json.loads(raw.stdout)
+        # the JSON document is a valid, versioned status-v1 payload (contract lock)
+        assert StatusPayload.model_validate(document).model_dump(mode="json") == document
+        assert document["schema_version"] == "status-v1"
+        # text and JSON agree on the single next action
+        assert f"Action: {document['next_action']['action_id']}" in text.stdout
+        assert f"Command: {document['next_action']['suggested_command']}" in text.stdout
+        # a second JSON run is byte-for-byte identical
+        assert runner.invoke(app, ["status", "--json"]).stdout == raw.stdout
+        return document, raw.stdout
+
+    empty, _ = _both()
+    assert empty["counts"]["run_count"] == 0
+    assert empty["next_action"]["action_id"] == "capture_first_run"
+
+    run_id = _run_with_accuracy(tmp_path, 0.95)
+    runner.invoke(app, ["graph", "build"])
+    with_best, _ = _both()
+    assert with_best["best_run"]["run_id"] == run_id
+    assert with_best["next_action"]["action_id"] == "set_baseline"
+    assert with_best["next_action"]["related_entity_id"] == run_id
+
+
+def test_status_json_uninitialized_error_creates_nothing(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["status", "--json"])
+
+    assert result.exit_code == 1
+    assert "projmem is not initialized. Run `pmem init` first." in result.stdout
+    assert '"schema_version"' not in result.stdout
+    assert "Traceback" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+    assert not (tmp_path / ".pmem").exists()
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stdout)
+
+
+def test_status_json_reports_failed_not_met_met_and_stale_states(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert (
+        runner.invoke(
+            app,
+            [
+                "init",
+                "--name",
+                "json-state-matrix",
+                "--metric",
+                "accuracy",
+                "--metric-direction",
+                "max",
+                "--target",
+                "0.9",
+            ],
+        ).exit_code
+        == 0
+    )
+
+    failed = runner.invoke(
+        app,
+        ["run", "--", sys.executable, "-c", "import sys; sys.exit(2)"],
+    )
+    assert failed.exit_code == 0
+    no_success = json.loads(runner.invoke(app, ["status", "--json"]).stdout)
+    assert no_success["metric"]["target_status"] == "no_successful_runs"
+    assert no_success["counts"]["successful_run_count"] == 0
+    assert no_success["counts"]["failed_run_count"] == 1
+
+    _run_with_accuracy(tmp_path, 0.5)
+    not_met = json.loads(runner.invoke(app, ["status", "--json"]).stdout)
+    assert not_met["metric"]["target_status"] == "not_met"
+    assert not_met["metric"]["best_value"] == 0.5
+
+    assert runner.invoke(app, ["graph", "build"]).exit_code == 0
+    best_run_id = _run_with_accuracy(tmp_path, 0.95)
+    met_and_stale = json.loads(runner.invoke(app, ["status", "--json"]).stdout)
+    assert met_and_stale["metric"]["target_status"] == "met"
+    assert met_and_stale["best_run"]["run_id"] == best_run_id
+    assert met_and_stale["graph"]["state"] == "stale"
+    assert met_and_stale["graph"]["reason_code"] == "graph_source_changed"
 
 
 def _run_with_accuracy(tmp_path, accuracy: float) -> str:
