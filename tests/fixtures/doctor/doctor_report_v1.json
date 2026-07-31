@@ -1,0 +1,96 @@
+{
+  "schema_version": "doctor-v1",
+  "project": {
+    "project_id": "proj_9f2c1a7b4d6e40f2a1b3c5d7e9f00112",
+    "project_name": "AG News baseline"
+  },
+  "overall_outcome": "unhealthy",
+  "summary": {
+    "total": 8,
+    "passed": 3,
+    "failed": 2,
+    "skipped": 2,
+    "not_applicable": 1,
+    "info": 5,
+    "warning": 2,
+    "error": 1
+  },
+  "checks": [
+    {
+      "check_id": "database.exists",
+      "category": "database",
+      "outcome": "pass",
+      "severity": "info",
+      "message": "The project database is present and readable.",
+      "remediation": null,
+      "related_entity_id": null
+    },
+    {
+      "check_id": "database.foreign_keys",
+      "category": "database",
+      "outcome": "fail",
+      "severity": "warning",
+      "message": "One or more rows violate a declared foreign key.",
+      "remediation": "Review the affected records and remove the dangling references.",
+      "related_entity_id": null
+    },
+    {
+      "check_id": "database.integrity",
+      "category": "database",
+      "outcome": "fail",
+      "severity": "error",
+      "message": "The database failed its SQLite integrity check.",
+      "remediation": "Restore the most recent private project backup, then re-run the diagnostic.",
+      "related_entity_id": null
+    },
+    {
+      "check_id": "environment.git_available",
+      "category": "environment",
+      "outcome": "skipped",
+      "severity": "info",
+      "message": "Git was not found on PATH, so repository checks did not run.",
+      "remediation": null,
+      "related_entity_id": null
+    },
+    {
+      "check_id": "evidence.graph_freshness",
+      "category": "evidence",
+      "outcome": "skipped",
+      "severity": "warning",
+      "message": "The evidence graph has never been built, so freshness cannot be judged.",
+      "remediation": "Run pmem graph build to create the evidence graph.",
+      "related_entity_id": null
+    },
+    {
+      "check_id": "permissions.posix_modes",
+      "category": "permissions",
+      "outcome": "not_applicable",
+      "severity": "info",
+      "message": "POSIX permission checks do not apply on this platform.",
+      "remediation": null,
+      "related_entity_id": null
+    },
+    {
+      "check_id": "permissions.private_directory",
+      "category": "permissions",
+      "outcome": "pass",
+      "severity": "info",
+      "message": "The private project directory is accessible only to the current user.",
+      "remediation": null,
+      "related_entity_id": null
+    },
+    {
+      "check_id": "tracked_paths.symlink",
+      "category": "tracked_paths",
+      "outcome": "pass",
+      "severity": "info",
+      "message": "No tracked path resolves through a symlink.",
+      "remediation": null,
+      "related_entity_id": null
+    }
+  ],
+  "database_mutation": false,
+  "network": false,
+  "automatic_repair": false,
+  "raw_text_in_output": false
+}
