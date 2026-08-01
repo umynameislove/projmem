@@ -94,20 +94,39 @@ def connect_database_readonly(db_path: str | Path) -> sqlite3.Connection:
     return connection
 
 
+def has_active_sqlite_sidecars(db_path: str | Path) -> bool:
+    """Return whether journal/WAL/master-journal state exists beside ``db_path``.
+
+    Read-only: it lists the containing directory and inspects names only. It
+    never opens, checkpoints, moves or removes a sidecar.
+
+    Public because a diagnostic caller needs to distinguish "another command is
+    running" from "this database is broken" *before* attempting to connect.
+    Sharing this predicate keeps the sidecar naming policy in exactly one
+    place; a second copy would be free to drift from the policy that
+    :func:`connect_database_readonly` actually enforces.
+
+    May raise :class:`OSError`; callers decide how to map it.
+    """
+
+    path = Path(db_path)
+    exact_names = {
+        f"{path.name}-journal",
+        f"{path.name}-shm",
+        f"{path.name}-wal",
+    }
+    master_journal_prefix = f"{path.name}-mj"
+    return any(
+        entry.name in exact_names or entry.name.startswith(master_journal_prefix)
+        for entry in path.parent.iterdir()
+    )
+
+
 def _reject_sqlite_sidecars(path: Path) -> None:
     """Fail closed when journal/WAL state exists beside ``path``."""
 
     try:
-        exact_names = {
-            f"{path.name}-journal",
-            f"{path.name}-shm",
-            f"{path.name}-wal",
-        }
-        master_journal_prefix = f"{path.name}-mj"
-        if any(
-            entry.name in exact_names or entry.name.startswith(master_journal_prefix)
-            for entry in path.parent.iterdir()
-        ):
+        if has_active_sqlite_sidecars(path):
             raise PmemPersistenceError(_READONLY_SIDECAR_MESSAGE)
     except PmemPersistenceError:
         raise

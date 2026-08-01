@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 
 from pmem.errors import PmemPersistenceError
@@ -24,6 +25,87 @@ class MigrationResult:
     applied_versions: tuple[str, ...]
     skipped_versions: tuple[str, ...]
     backup_path: Path | None
+
+
+class SchemaState(Enum):
+    """Typed schema condition for read-only callers.
+
+    Exists so a diagnostic caller can distinguish *missing migrations* from a
+    *checksum mismatch* without parsing an exception message. Message parsing
+    would couple the caller to error wording that is meant to stay free to
+    change, and it would silently start misreporting the moment the wording
+    moved.
+    """
+
+    CURRENT = "current"
+    MISSING_MIGRATIONS = "missing_migrations"
+    CHECKSUM_MISMATCH = "checksum_mismatch"
+
+
+@dataclass(frozen=True)
+class SchemaInspection:
+    """Immutable, read-only description of the recorded migration state.
+
+    ``missing_versions`` and ``mismatched_versions`` carry migration *version
+    names* only. No checksum value, no SQL and no path is ever included, so the
+    structure is safe to reason about in a diagnostic that must not leak them.
+    Callers are still responsible for not rendering version names into public
+    output if their own contract forbids it.
+    """
+
+    state: SchemaState
+    missing_versions: tuple[str, ...]
+    mismatched_versions: tuple[str, ...]
+    unknown_versions: tuple[str, ...]
+    recorded_version_count: int
+
+
+def inspect_schema(
+    connection: sqlite3.Connection,
+    migrations: tuple[Migration, ...] = CURRENT_MIGRATIONS,
+) -> SchemaInspection:
+    """Describe the recorded migration state without mutating anything.
+
+    Strictly read-only: it issues two ``SELECT`` statements and never creates,
+    migrates, backs up or repairs. A database that cannot be read raises the
+    same safe :class:`PmemPersistenceError` that
+    :func:`verify_schema_current` raises.
+
+    ``state`` mirrors the precedence :func:`verify_schema_current` enforces --
+    a checksum mismatch outranks a missing migration -- so the two functions
+    can never disagree about which problem to report first.
+    """
+
+    try:
+        applied = _load_applied_migrations(connection)
+    except sqlite3.Error as exc:
+        raise PmemPersistenceError("The project database could not be read.") from exc
+
+    expected = {migration.version: migration.checksum for migration in migrations}
+    mismatched = tuple(
+        version
+        for version, checksum in sorted(applied.items())
+        if version in expected and expected[version] != checksum
+    )
+    missing = tuple(
+        migration.version for migration in migrations if migration.version not in applied
+    )
+    unknown = tuple(version for version in sorted(applied) if version not in expected)
+
+    if mismatched:
+        state = SchemaState.CHECKSUM_MISMATCH
+    elif missing:
+        state = SchemaState.MISSING_MIGRATIONS
+    else:
+        state = SchemaState.CURRENT
+
+    return SchemaInspection(
+        state=state,
+        missing_versions=missing,
+        mismatched_versions=mismatched,
+        unknown_versions=unknown,
+        recorded_version_count=len(applied),
+    )
 
 
 def apply_migrations(
@@ -75,15 +157,15 @@ def verify_schema_current(
     when a recorded checksum no longer matches. Used by read-only paths that
     must not run migrations. The error message never leaks SQL, paths, or the
     expected/actual checksum values.
+
+    Implemented on top of :func:`inspect_schema` so the raising path and the
+    diagnostic path can never disagree about what the schema state is.
     """
 
-    try:
-        applied = _load_applied_migrations(connection)
-    except sqlite3.Error as exc:
-        raise PmemPersistenceError("The project database could not be read.") from exc
-    _check_applied_checksums(applied, migrations)
-    missing = [migration.version for migration in migrations if migration.version not in applied]
-    if missing:
+    inspection = inspect_schema(connection, migrations)
+    if inspection.state is SchemaState.CHECKSUM_MISMATCH:
+        raise PmemPersistenceError("Migration checksum mismatch.")
+    if inspection.state is SchemaState.MISSING_MIGRATIONS:
         raise PmemPersistenceError(
             "The projmem database schema is out of date. "
             "Run `pmem init` to migrate before this read-only command."
@@ -101,7 +183,10 @@ def _load_applied_migrations(connection: sqlite3.Connection) -> dict[str, str]:
         return {}
 
     rows = connection.execute("SELECT version, checksum FROM schema_migrations").fetchall()
-    return {str(row["version"]): str(row["checksum"]) for row in rows}
+    # Positional access works for both plain tuple rows and ``sqlite3.Row``.
+    # The public inspection seam must not depend on a caller-specific
+    # ``row_factory`` merely to read two fixed columns.
+    return {str(row[0]): str(row[1]) for row in rows}
 
 
 def _check_applied_checksums(
