@@ -50,6 +50,35 @@ def test_add_and_read_tracked_path(repositories: TrackedPathRepository) -> None:
     assert repositories.list_for_project("proj_1") == (record,)
 
 
+def test_limited_list_returns_only_the_canonical_prefix(
+    repositories: TrackedPathRepository,
+) -> None:
+    """The doctor seam must bound SQL results before Python materialises them."""
+
+    for index, path in enumerate(("z.py", "a.py", "m.py")):
+        repositories.add(
+            tracked_path_id=f"track_{index}",
+            project_id="proj_1",
+            path=path,
+            sha256=HASH,
+            size_bytes=1,
+            last_checked=NOW,
+            created_at=NOW,
+        )
+
+    records = repositories.list_for_project_limited("proj_1", limit=2)
+
+    assert [record.path for record in records] == ["a.py", "m.py"]
+
+
+@pytest.mark.parametrize("limit", [0, -1, True])
+def test_limited_list_rejects_an_invalid_limit(
+    repositories: TrackedPathRepository, limit: int
+) -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        repositories.list_for_project_limited("proj_1", limit=limit)
+
+
 def test_duplicate_tracked_path_is_rejected(repositories: TrackedPathRepository) -> None:
     """The unique project/path constraint should prevent duplicate tracking rows."""
 
