@@ -58,6 +58,21 @@ from pmem.doctor.model import (
     DoctorCheckResult,
     DoctorSeverity,
 )
+from pmem.doctor.pathsafety import (
+    anchored_traversal_supported,
+)
+from pmem.doctor.pathsafety import (
+    open_directory as _open_directory,
+)
+from pmem.doctor.pathsafety import (
+    open_directory_at as _open_directory_at,
+)
+from pmem.doctor.pathsafety import (
+    same_directory_binding as _same_directory_binding,
+)
+from pmem.doctor.pathsafety import (
+    same_path_binding as _same_path_binding,
+)
 from pmem.doctor.registry import DoctorCheckContext, DoctorCheckDefinition
 from pmem.graph.persistence import default_graph_artifact_path
 from pmem.repositories.sqlite import PMEM_DIRNAME, project_database_path
@@ -178,14 +193,7 @@ def posix_modes_are_supported() -> bool:
     which would also change ``pathlib`` and ``pytest`` behaviour.
     """
 
-    return (
-        os.name == "posix"
-        and hasattr(os, "O_DIRECTORY")
-        and hasattr(os, "O_NOFOLLOW")
-        and hasattr(os, "geteuid")
-        and os.open in os.supports_dir_fd
-        and os.stat in os.supports_dir_fd
-    )
+    return anchored_traversal_supported() and hasattr(os, "geteuid")
 
 
 # --------------------------------------------------------------------------- #
@@ -220,50 +228,6 @@ def _inspect_at(parent_fd: int, name: str, *, expect_directory: bool) -> EntryPe
     except OSError:
         return EntryPermission(EntryState.UNREADABLE, None, expect_directory)
     return _entry_from_stat(status, expect_directory=expect_directory)
-
-
-def _directory_open_flags() -> int:
-    """Flags that open a directory itself and reject a symlink at the final component."""
-
-    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-
-
-def _open_directory(path: Path) -> int:
-    return os.open(path, _directory_open_flags())
-
-
-def _open_directory_at(parent_fd: int, name: str) -> int:
-    return os.open(name, _directory_open_flags(), dir_fd=parent_fd)
-
-
-def _same_directory_binding(parent_fd: int, name: str, child_fd: int) -> bool:
-    """Prove ``name`` still identifies the directory held by ``child_fd``."""
-
-    try:
-        named = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-        opened = os.fstat(child_fd)
-    except OSError:
-        return False
-    return (
-        stat.S_ISDIR(named.st_mode)
-        and named.st_dev == opened.st_dev
-        and named.st_ino == opened.st_ino
-    )
-
-
-def _same_path_binding(path: Path, directory_fd: int) -> bool:
-    """Prove an externally supplied root path still names its opened directory."""
-
-    try:
-        named = path.lstat()
-        opened = os.fstat(directory_fd)
-    except OSError:
-        return False
-    return (
-        stat.S_ISDIR(named.st_mode)
-        and named.st_dev == opened.st_dev
-        and named.st_ino == opened.st_ino
-    )
 
 
 def _bounded_directory_names(directory_fd: int, remaining: int) -> tuple[str, ...] | None:

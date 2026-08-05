@@ -152,6 +152,32 @@ class TrackedPathRepository:
         ).fetchall()
         return tuple(_tracked_path_from_row(row) for row in rows)
 
+    def list_for_project_limited(
+        self, project_id: str, *, limit: int
+    ) -> tuple[TrackedPathRecord, ...]:
+        """Return a bounded deterministic prefix of one project's tracked files.
+
+        Diagnostics use this seam with ``inspection_limit + 1``.  The extra row
+        proves that more evidence exists without materialising the entire table,
+        so a malformed or unexpectedly large local database cannot bypass the
+        doctor's resource budget before inspection even begins.
+        """
+
+        if isinstance(limit, bool) or limit < 1:
+            raise ValueError("tracked path query limit must be a positive integer")
+        rows = execute(
+            self._connection,
+            """
+            SELECT id, project_id, path, tag, hash, size_bytes, last_checked, created_at
+            FROM tracked_paths
+            WHERE project_id = ?
+            ORDER BY path
+            LIMIT ?
+            """,
+            (project_id, limit),
+        ).fetchall()
+        return tuple(_tracked_path_from_row(row) for row in rows)
+
 
 def _tracked_path_from_row(row: sqlite3.Row) -> TrackedPathRecord:
     """Convert a SQLite row to the typed repository record."""
